@@ -202,37 +202,50 @@ sub xml_search
         };
     }
 
-    my $format = ($args->{fmt} // "") eq "json" ? "jsonnew" : "xml";
+    $query = uri_escape_utf8($query);
 
-    my $url_ext = "/ws/2/$resource/?" .
-        "max=$limit&type=$resource&fmt=$format&offset=$offset" .
-        "&query=" . uri_escape_utf8($query) . "&dismax=$dismax";
+    my $mode = DBDefs->SEARCH_MODE();
 
-    if (DBDefs->LUCENE_X_ACCEL_REDIRECT) {
-        return { redirect_url => '/internal/search/' . DBDefs->LUCENE_SERVER . $url_ext }
-    } else {
-        my $url = 'http://' . DBDefs->LUCENE_SERVER . $url_ext;
-        my $response = $self->c->lwp->get($url);
-        if ( $response->is_success )
-        {
-            return { xml => $response->decoded_content };
+    my $url;
+    my $response;
+
+    if ($mode eq 'lucene') {
+        my $format = ($args->{fmt} // "") eq "json" ? "jsonnew" : "xml";
+
+        $url = sprintf('%s/ws/2/%s/?type=%s&fmt=%s&offset=%s&max=%s&query=%s&dismax=%s',
+                       DBDefs->LUCENE_SERVER(), $resource, $resource, $offset, $limit, $format, $query, $dismax);
+
+        if (DBDefs->LUCENE_X_ACCEL_REDIRECT) {
+            return { redirect_url => '/internal/search/' . $url }
+        } else {
+            $url = 'http://' . $url;
         }
-        else
-        {
-            if ($response->code == HTTP_BAD_REQUEST)
-            {
-                return {
-                    error => "Search server could not complete query: Bad request",
-                    code  => HTTP_BAD_REQUEST
-                }
-            }
-            else
-            {
-                return {
-                    error => "Could not retrieve sub-document page from search server. Error: $url  -> " . $response->status_line,
-                    code  => HTTP_SERVICE_UNAVAILABLE
-                }
-            }
+    }
+    elsif ($mode eq 'solr') {
+        my $format = ($args->{fmt} // "") eq "json" ? "mbjson" : "mbxml";
+
+        $url = sprintf('http://%s/%s/select?start=%s&rows=%s&wt=%s&q=%s%s',
+                       DBDefs->SOLR_SERVER(), $resource, $offset, $limit, $format, $query,
+                       $dismax eq 'true' ? '&defType=dismax' : '');
+    }
+    else {
+        return { code => 500, error => 'Internal configuration error; search mode must be "lucene" or "solr".' };
+    }
+
+    my $response = $self->c->lwp->get($url);
+    if ($response->is_success) {
+        return { xml => $response->decoded_content };
+    }
+    elsif ($response->code == HTTP_BAD_REQUEST) {
+        return {
+            error => "Search server could not complete query: Bad request",
+            code  => HTTP_BAD_REQUEST
+        }
+    }
+    else {
+        return {
+            error => "Could not retrieve sub-document page from search server. Error: $url  -> " . $response->status_line,
+            code  => HTTP_SERVICE_UNAVAILABLE
         }
     }
 }

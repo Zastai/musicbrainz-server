@@ -742,14 +742,33 @@ sub external_search
 
     $query = uri_escape_utf8($query);
     $type =~ s/release_group/release-group/;
-    my $search_url = sprintf("http://%s/ws/2/%s/?query=%s&offset=%s&max=%s&fmt=jsonnew&dismax=%s&web=1",
-                                 DBDefs->LUCENE_SERVER,
-                                 $type,
-                                 $query,
-                                 $offset,
-                                 $limit,
-                                 $adv ? 'false' : 'true',
-                                 );
+
+    my $mode = DBDefs->SEARCH_MODE();
+    my $search_url = '';
+    
+    if ($mode eq 'lucene') {
+        $search_url = sprintf("http://%s/ws/2/%s/?query=%s&offset=%s&max=%s&fmt=jsonnew&dismax=%s&web=1",
+                              DBDefs->LUCENE_SERVER(),
+                              $type,
+                              $query,
+                              $offset,
+                              $limit,
+                              $adv ? 'false' : 'true',
+            );
+    }
+    elsif ($mode eq 'solr') {
+        $search_url = sprintf("http://%s/%s/select/?q=%s&start=%s&rows=%s&wt=mbjson%s",
+                              DBDefs->SOLR_SERVER(),
+                              $type,
+                              $query,
+                              $offset,
+                              $limit,
+                              $adv ? '' : '&defType=dismax',
+            );
+    }
+    else {
+        return { code => 500, error => 'Internal configuration error; search mode must be "lucene" or "solr".' };
+    }
 
     # Dispatch the search request.
     my $response = get_chunked_with_retry($self->c->lwp, $search_url);
@@ -1019,13 +1038,32 @@ sub xml_search
     }
 
     $query = uri_escape_utf8($query);
-    my $search_url = sprintf("http://%s/ws/%d/%s/?query=%s&offset=%s&max=%s&fmt=xml",
-                                 DBDefs->LUCENE_SERVER,
-                                 $version,
-                                 $type,
-                                 $query,
-                                 $offset,
-                                 $limit,);
+
+    my $mode = DBDefs->SEARCH_MODE();
+    my $search_url = '';
+    
+    if ($mode eq 'lucene') {
+        $search_url = sprintf("http://%s/ws/%d/%s/?query=%s&offset=%s&max=%s&fmt=xml",
+                              DBDefs->LUCENE_SERVER(),
+                              $version,
+                              $type,
+                              $query,
+                              $offset,
+                              $limit
+            );
+    }
+    elsif ($mode eq 'solr') {
+        $search_url = sprintf("http://%s/%s/select/?q=%s&start=%s&rows=%s&wt=mbxml",
+                              DBDefs->SOLR_SERVER(),
+                              $type,
+                              $query,
+                              $offset,
+                              $limit
+            );
+    }
+    else {
+        return { code => 500, error => 'Internal configuration error; search mode must be "lucene" or "solr".' };
+    }
 
     # Dispatch the search request.
     my $response = $self->c->lwp->get($search_url);
