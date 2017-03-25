@@ -369,6 +369,11 @@ sub CATALYST_DEBUG { 1 }
 # developing and debugging easier
 sub DEVELOPMENT_SERVER { 1 }
 
+# Chooses between the search server backends:
+# - 'lucene'  for the old search server, via LUCENE_SERVER
+# - 'solr'    for the new SOLR search server, via SOLR_SERVER
+sub SEARCH_MODE { 'lucene' }
+
 # How long to wait before rechecking template files (undef uses the
 # Template::Toolkit default)
 sub STAT_TTL { shift->DEVELOPMENT_SERVER() ? undef : 1200 }
